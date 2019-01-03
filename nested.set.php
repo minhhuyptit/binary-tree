@@ -101,8 +101,8 @@ class Nest_Set {
     }
 
     protected function insertBefore($brother_id) {
-        $parentInfo     = $this->getNodeInfo($this->_parent_id);
-        $brotherInfo    = $this->getNodeInfo($brother_id);
+        $parentInfo = $this->getNodeInfo($this->_parent_id);
+        $brotherInfo = $this->getNodeInfo($brother_id);
 
         $sqlUpdateLeft = "UPDATE {$this->_table} SET lft = (lft+2) WHERE lft >= " . $brotherInfo['lft'];
         mysql_query($sqlUpdateLeft, $this->_connect);
@@ -122,8 +122,8 @@ class Nest_Set {
     }
 
     protected function insertAfter($brother_id) {
-        $parentInfo     = $this->getNodeInfo($this->_parent_id);
-        $brotherInfo    = $this->getNodeInfo($brother_id);
+        $parentInfo = $this->getNodeInfo($this->_parent_id);
+        $brotherInfo = $this->getNodeInfo($brother_id);
 
         $sqlUpdateLeft = "UPDATE {$this->_table} SET lft = (lft+2) WHERE lft > " . $brotherInfo['rgt'];
         mysql_query($sqlUpdateLeft, $this->_connect);
@@ -142,14 +142,14 @@ class Nest_Set {
         mysql_query($sqlInsert, $this->_connect);
     }
 
-    public function moveNode($id, $parent, $options = null){
+    public function moveNode($id, $parent, $options = null) {
         $this->_id = $id;
         $this->_parent_id = $parent;
         if ($options == null || $options['position'] == 'right') {
             $this->moveRight();
         }
         if ($options['position'] == 'left') {
-            $this->movetLeft();
+            $this->moveLeft();
         }
         if ($options['position'] == 'before') {
             $this->moveBefore($options['brother_id']);
@@ -159,57 +159,361 @@ class Nest_Set {
         }
     }
 
-    protected function moveLeft(){
-        
-    }
-
-    protected function moveRight(){
+    protected function moveLeft() {
         $infoMoveNode = $this->getNodeInfo($this->_id);
         $lftMoveNode = $infoMoveNode['lft'];
         $rgtMoveNode = $infoMoveNode['rgt'];
 
-
         //1. Tách nhánh khỏi cây
-        $sqlSelect = "UPDATE $this->_table 
-                        SET lft = (lft - $lftMoveNode), 
-                            rgt = (rgt - $rgtMoveNode)
-                        WHERE lft BETWEEN $lftMoveNode AND $rgtMoveNode";
-        // mysql_query($sqlInsert, $this->_connect);
-        echo '<br>' . $sqlSelect;
+        $sqlSelect = "UPDATE $this->_table
+         SET lft = (lft - $lftMoveNode),
+             rgt = (rgt - $rgtMoveNode)
+         WHERE lft BETWEEN $lftMoveNode AND $rgtMoveNode";
+        mysql_query($sqlSelect, $this->_connect);
+        // echo '<br>' . $sqlSelect;
 
         //2. Tính độ dài của nhánh chúng ta cắt
-        $lengthModeNode = $this->lengthNode($lftMoveNode, $rgtMoveNode);
-
+        $lengthMoveNode = $this->lengthNode($lftMoveNode, $rgtMoveNode);
 
         //3. Cập nhật giá trị các node nằm bên phải của node tách
-        $sqlUpdateLeft = "UPDATE $this->_table 
-                            SET lft = (lft - $lengthModeNode) 
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft - $lengthMoveNode)
                             WHERE lft > $rgtMoveNode";
-        // mysql_query($sqlInsert, $this->_connect);
-        echo '<br>' . $sqlUpdateLeft;
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
 
-        $sqlUpdateRight = "UPDATE $this->_table 
-                            SET rgt = (rgt - $lengthModeNode) 
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt - $lengthMoveNode)
                             WHERE rgt > $rgtMoveNode";
-        // mysql_query($sqlInsert, $this->_connect);
-        echo '<br>' . $sqlUpdateRight;
-        
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //4. Lấy thông tin của node cha
+        $infoParentNode = $this->getNodeInfo($this->_parent_id);
+        $leftParentNode = $infoParentNode['lft'];
+
+        //5. Cập nhật các giá trị trước khi gắn nhánh vào
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + $lengthMoveNode)
+                            WHERE lft > $leftParentNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + $lengthMoveNode)
+                            WHERE rgt > $leftParentNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //6. Cập nhật level cho nhánh sắp được gán vào cây
+        $levelMoveNode = $infoMoveNode['level'];
+        $levelParentNode = $infoParentNode['level'];
+        $sqlUpdateLevel = "UPDATE $this->_table
+                            SET level = (level - $levelMoveNode + $levelParentNode + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLevel, $this->_connect);
+        // echo '<br>'.$sqlUpdateLevel;
+
+        //7. Cập nhật nhánh trước khi gán vào node mới
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + {$infoParentNode['lft']} + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + {$infoParentNode['lft']} + {$lengthMoveNode})
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //8. Gán vào node cha
+        $sqlUpdateNode = "UPDATE $this->_table
+                            SET parent = {$infoParentNode['id']}
+                            WHERE id = {$infoMoveNode['id']}";
+        mysql_query($sqlUpdateNode, $this->_connect);
+        // echo '<br>'.$sqlUpdateNode;
+
+    }
+
+    protected function moveRight() {
+        $infoMoveNode = $this->getNodeInfo($this->_id);
+        $lftMoveNode = $infoMoveNode['lft'];
+        $rgtMoveNode = $infoMoveNode['rgt'];
+
+        //1. Tách nhánh khỏi cây
+        $sqlSelect = "UPDATE $this->_table
+                        SET lft = (lft - $lftMoveNode),
+                            rgt = (rgt - $rgtMoveNode)
+                        WHERE lft BETWEEN $lftMoveNode AND $rgtMoveNode";
+        mysql_query($sqlSelect, $this->_connect);
+        // echo '<br>'.$sqlSelect;
+        //2. Tính độ dài của nhánh chúng ta cắt
+        $lengthMoveNode = $this->lengthNode($lftMoveNode, $rgtMoveNode);
+
+        //3. Cập nhật giá trị các node nằm bên phải của node tách
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft - $lengthMoveNode)
+                            WHERE lft > $rgtMoveNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt - $lengthMoveNode)
+                            WHERE rgt > $rgtMoveNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //4. Lấy thông tin của node cha
+        $infoParentNode = $this->getNodeInfo($this->_parent_id);
+        $rightParentNode = $infoParentNode['rgt'];
+
+        //5. Cập nhật các giá trị trước khi gắn nhánh vào
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + $lengthMoveNode)
+                            WHERE lft > $rightParentNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + $lengthMoveNode)
+                            WHERE rgt >= $rightParentNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //6. Cập nhật level cho nhánh sắp được gán vào cây
+        $levelMoveNode = $infoMoveNode['level'];
+        $levelParentNode = $infoParentNode['level'];
+        $sqlUpdateLevel = "UPDATE $this->_table
+                            SET level = (level - $levelMoveNode + $levelParentNode + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLevel, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //7. Cập nhật nhánh trước khi gán vào node mới
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + {$infoParentNode['rgt']})
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + {$infoParentNode['rgt']} + {$lengthMoveNode} - 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //8. Gán vào node cha
+        $sqlUpdateNode = "UPDATE $this->_table
+                            SET parent = {$infoParentNode['id']}
+                            WHERE id = {$infoMoveNode['id']}";
+        mysql_query($sqlUpdateNode, $this->_connect);
+        // echo '<br>'.$sqlUpdateNode;
+
         // echo "<pre>";
-        // print_r($infoMoveNode);
+        // print_r($infoParentNode);
         // echo "</pre>";
     }
 
-    public function lengthNode($lftMoveNode, $rgtMoveNode){
+    protected function moveBefore($brother_id) {
+        $infoMoveNode = $this->getNodeInfo($this->_id);
+        $lftMoveNode = $infoMoveNode['lft'];
+        $rgtMoveNode = $infoMoveNode['rgt'];
+
+        //1. Tách nhánh khỏi cây
+        $sqlSelect = "UPDATE $this->_table
+         SET lft = (lft - $lftMoveNode),
+             rgt = (rgt - $rgtMoveNode)
+         WHERE lft BETWEEN $lftMoveNode AND $rgtMoveNode";
+        mysql_query($sqlSelect, $this->_connect);
+        // echo '<br>' . $sqlSelect;
+
+        //2. Tính độ dài của nhánh chúng ta cắt
+        $lengthMoveNode = $this->lengthNode($lftMoveNode, $rgtMoveNode);
+
+        //3. Cập nhật giá trị các node nằm bên phải của node tách
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft - $lengthMoveNode)
+                            WHERE lft > $rgtMoveNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt - $lengthMoveNode)
+                            WHERE rgt > $rgtMoveNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //4. Lấy thông tin của node cha
+        $infoParentNode = $this->getNodeInfo($this->_parent_id);
+
+        //5. Lấy giá trị của node brother
+        $infoBrotherNode = $this->getNodeInfo($brother_id);
+        $lftBrotherNode = $infoBrotherNode['lft'];
+
+        //6. Cập nhật các giá trị trước khi gắn nhánh vào
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + $lengthMoveNode)
+                            WHERE lft >= $lftBrotherNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + $lengthMoveNode)
+                            WHERE rgt > $lftBrotherNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //7. Cập nhật level cho nhánh sắp được gán vào cây
+        $levelMoveNode = $infoMoveNode['level'];
+        $levelParentNode = $infoParentNode['level'];
+        $sqlUpdateLevel = "UPDATE $this->_table
+                            SET level = (level - $levelMoveNode + $levelParentNode + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLevel, $this->_connect);
+        // echo '<br>'.$sqlUpdateLevel;
+
+        //8. Cập nhật nhánh trước khi gán vào node mới
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + {$lftBrotherNode})
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + {$lftBrotherNode} + {$lengthMoveNode} - 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //9. Gán vào node cha
+        $sqlUpdateNode = "UPDATE $this->_table
+                            SET parent = {$infoParentNode['id']}
+                            WHERE id = {$infoMoveNode['id']}";
+        mysql_query($sqlUpdateNode, $this->_connect);
+        // echo '<br>'.$sqlUpdateNode;
+
+    }
+
+    protected function moveAfter($brother_id) {
+        $infoMoveNode = $this->getNodeInfo($this->_id);
+        $lftMoveNode = $infoMoveNode['lft'];
+        $rgtMoveNode = $infoMoveNode['rgt'];
+
+        //1. Tách nhánh khỏi cây
+        $sqlSelect = "UPDATE $this->_table
+         SET lft = (lft - $lftMoveNode),
+             rgt = (rgt - $rgtMoveNode)
+         WHERE lft BETWEEN $lftMoveNode AND $rgtMoveNode";
+        mysql_query($sqlSelect, $this->_connect);
+        // echo '<br>' . $sqlSelect;
+
+        //2. Tính độ dài của nhánh chúng ta cắt
+        $lengthMoveNode = $this->lengthNode($lftMoveNode, $rgtMoveNode);
+
+        //3. Cập nhật giá trị các node nằm bên phải của node tách
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft - $lengthMoveNode)
+                            WHERE lft > $rgtMoveNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt - $lengthMoveNode)
+                            WHERE rgt > $rgtMoveNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //4. Lấy thông tin của node cha
+        $infoParentNode = $this->getNodeInfo($this->_parent_id);
+
+        //5. Lấy giá trị của node brother
+        $infoBrotherNode = $this->getNodeInfo($brother_id);
+        $rgtBrotherNode = $infoBrotherNode['rgt'];
+
+        //6. Cập nhật các giá trị trước khi gắn nhánh vào
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + $lengthMoveNode)
+                            WHERE lft > $rgtBrotherNode";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + $lengthMoveNode)
+                            WHERE rgt > $rgtBrotherNode";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //7. Cập nhật level cho nhánh sắp được gán vào cây
+        $levelMoveNode = $infoMoveNode['level'];
+        $levelParentNode = $infoParentNode['level'];
+        $sqlUpdateLevel = "UPDATE $this->_table
+                            SET level = (level - $levelMoveNode + $levelParentNode + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLevel, $this->_connect);
+        // echo '<br>'.$sqlUpdateLevel;
+
+        //8. Cập nhật nhánh trước khi gán vào node mới
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft + {$rgtBrotherNode} + 1)
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt + {$rgtBrotherNode} + {$lengthMoveNode})
+                            WHERE rgt <= 0";
+        mysql_query($sqlUpdateRight, $this->_connect);
+        // echo '<br>'.$sqlUpdateRight;
+
+        //9. Gán vào node cha
+        $sqlUpdateNode = "UPDATE $this->_table
+                            SET parent = {$infoParentNode['id']}
+                            WHERE id = {$infoMoveNode['id']}";
+        mysql_query($sqlUpdateNode, $this->_connect);
+        // echo '<br>'.$sqlUpdateNode;
+
+    }
+
+    public function moveUp($id){
+        $infoMoveNode = $this->getNodeInfo($id);
+        $infoParentNode = $this->getNodeInfo($infoMoveNode['parent']);
+
+        $sql1 = "SELECT *FROM $this->_table 
+                WHERE parent = {$infoMoveNode['parent']} AND lft < {$infoMoveNode['lft']} 
+                ORDER BY lft DESC LIMIT 1";
+
+        $result1 = mysql_query($sql1, $this->_connect);
+
+        $infoBrotherNode = mysql_fetch_assoc($result1);
+
+        if(!empty($infoBrotherNode)){
+            $options = array('position' => 'before', 'brother_id' => $infoBrotherNode['id']);
+            $this->moveNode($id, $infoMoveNode['parent'], $options);
+        }
+    }
+
+    public function moveDown($id){
+        $infoMoveNode = $this->getNodeInfo($id);
+        $infoParentNode = $this->getNodeInfo($infoMoveNode['parent']);
+
+        $sql1 = "SELECT *FROM $this->_table 
+                WHERE parent = {$infoMoveNode['parent']} AND lft > {$infoMoveNode['lft']} 
+                ORDER BY lft ASC LIMIT 1";
+
+        $result1 = mysql_query($sql1, $this->_connect);
+
+        $infoBrotherNode = mysql_fetch_assoc($result1);
+
+        if(!empty($infoBrotherNode)){
+            $options = array('position' => 'after', 'brother_id' => $infoBrotherNode['id']);
+            $this->moveNode($id, $infoMoveNode['parent'], $options);
+        }
+    }
+
+    public function lengthNode($lftMoveNode, $rgtMoveNode) {
         $lengthMoveNode = $rgtMoveNode - $lftMoveNode + 1;
         return $lengthMoveNode;
-    }
-
-    protected function moveBefore($brother_id){
-        
-    }
-
-    protected function moveAfter($brother_id){
-        
     }
 
     protected function createInsertQuery($data = null) {

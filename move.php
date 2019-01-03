@@ -9,13 +9,36 @@ $arrConnect = array(
     'table' => 'menu',
 );
 $tree = new Nest_Set($arrConnect);
-$data = array(
-    'name' => 'Group 01',
-    'url' => 'http://www.group-01.vn',
-);
+
+//Move Right
+// $id = 9;
+// $parent = 5;
+// $tree->moveNode($id, $parent);
+
+//Move Left
+// $id = 9;
+// $parent = 5;
+// $options['position'] = 'left';
+// $tree->moveNode($id, $parent, $options);
+
+//Move Before
+// $id = 9;
+// $parent = 1;
+// $options['position'] = 'before';
+// $options['brother_id'] = 6;
+// $tree->moveNode($id, $parent, $options);
+
+//Move After
+// $id = 9;
+// $parent = 1;
+// $options['position'] = 'after';
+// $options['brother_id'] = 4;
+// $tree->moveNode($id, $parent, $options);
+
+// $id = 9;
+// $tree->moveUp($id);
+
 $id = 9;
-$parent = 5;
-// $option['position'] = 'right';
-$tree->moveNode($id, $parent);
+$tree->moveDown($id);
 
 ?>
