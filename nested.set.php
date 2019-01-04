@@ -39,6 +39,14 @@ class Nest_Set {
         $this->_table = $table;
     }
 
+    public function getTable(){
+        return $this->_table;
+    }
+
+    public function getConnect(){
+        return $this->_connect;
+    }
+
     public function insertNode($data, $parent = 1, $options = null) {
         $this->_data = $data;
         $this->_parent_id = $parent;
@@ -140,6 +148,86 @@ class Nest_Set {
         $newQuery = $this->createInsertQuery($data);
         $sqlInsert = "INSERT INTO $this->_table ({$newQuery['cols']}) VALUES ({$newQuery['vals']})";
         mysql_query($sqlInsert, $this->_connect);
+    }
+
+    public function removeNode($id, $options = 'branch') {
+        $this->_id = $id;
+        if ($options == 'branch' || $options == null) {
+            $this->removeBranch();
+        }
+        if ($options == 'one') {
+            $this->removeOne();
+        }
+    }
+
+    protected function removeBranch() {
+        // 1.Lấy thông tin của Node bị xóa
+        $infoNodeRemove = $this->getNodeInfo($this->_id);
+
+        // 2.Tính chiều dài của nhánh chúng ta xóa
+        $lengthNodeRemove = $this->lengthNode($infoNodeRemove['lft'], $infoNodeRemove['rgt']);
+
+        // 3.Xóa nhánh
+        $sqlDelete = "DELETE FROM $this->_table
+                    WHERE lft BETWEEN {$infoNodeRemove['lft']} AND {$infoNodeRemove['rgt']}";
+        mysql_query($sqlDelete, $this->_connect);
+
+        // 4.Cập nhật lại giá trị left-right của cây
+        $sqlUpdateLeft = "UPDATE $this->_table
+                            SET lft = (lft - $lengthNodeRemove)
+                            WHERE lft > {$infoNodeRemove['rgt']}";
+        mysql_query($sqlUpdateLeft, $this->_connect);
+        // echo '<br>'.$sqlUpdateLeft;
+
+        $sqlUpdateRight = "UPDATE $this->_table
+                            SET rgt = (rgt - $lengthNodeRemove)
+                            WHERE rgt > {$infoNodeRemove['rgt']}";
+        mysql_query($sqlUpdateRight, $this->_connect);
+    }
+
+    protected function removeOne() {
+        $nodeInfo = $this->getNodeInfo($this->_id);
+        $sql = "SELECT id FROM $this->_table WHERE parent = {$this->_id} ORDER BY lft DESC";
+        $result = mysql_query($sql, $this->_connect);
+        while($row = mysql_fetch_assoc($result)){
+            $childIds[] = $row['id'];
+        }
+
+        if(!empty($childIds)){
+            foreach($childIds as $val){
+                $id = $val;
+                $parent = $nodeInfo['parent'];
+                $options = array('position' => 'after', 'brother_id' => $nodeInfo['id']);
+                $this->moveNode($id, $parent, $options);
+            }
+            $this->removeNode($nodeInfo['id']);
+        }
+    }
+
+    public function updateNode($data, $id = null, $newParentID = 0) {
+        if ($id > 0 && count($data) != 0) {
+            $strUpdate = $this->createUpdateQuery($data);
+            $sql = "UPDATE $this->_table
+                    SET $strUpdate
+                    WHERE id = $id";
+            mysql_query($sql, $this->_connect);
+            $infoNode = $this->getNodeInfo($id);
+            if ($newParentID > 0 && $newParentID != null) {
+                if ($infoNode['parent'] != $newParentID) {
+                    $this->moveNode($id, $newParentID);
+                }
+            }
+        }
+    }
+
+    protected function createUpdateQuery($data) {
+        if (!empty($data)) {
+            $result = '';
+            foreach ($data as $key => $value) {
+                $result .= " " . $key . "= '" . $value . "',";
+            }
+            return rtrim($result, ",");
+        }
     }
 
     public function moveNode($id, $parent, $options = null) {
@@ -475,37 +563,37 @@ class Nest_Set {
 
     }
 
-    public function moveUp($id){
+    public function moveUp($id) {
         $infoMoveNode = $this->getNodeInfo($id);
         $infoParentNode = $this->getNodeInfo($infoMoveNode['parent']);
 
-        $sql1 = "SELECT *FROM $this->_table 
-                WHERE parent = {$infoMoveNode['parent']} AND lft < {$infoMoveNode['lft']} 
+        $sql1 = "SELECT *FROM $this->_table
+                WHERE parent = {$infoMoveNode['parent']} AND lft < {$infoMoveNode['lft']}
                 ORDER BY lft DESC LIMIT 1";
 
         $result1 = mysql_query($sql1, $this->_connect);
 
         $infoBrotherNode = mysql_fetch_assoc($result1);
 
-        if(!empty($infoBrotherNode)){
+        if (!empty($infoBrotherNode)) {
             $options = array('position' => 'before', 'brother_id' => $infoBrotherNode['id']);
             $this->moveNode($id, $infoMoveNode['parent'], $options);
         }
     }
 
-    public function moveDown($id){
+    public function moveDown($id) {
         $infoMoveNode = $this->getNodeInfo($id);
         $infoParentNode = $this->getNodeInfo($infoMoveNode['parent']);
 
-        $sql1 = "SELECT *FROM $this->_table 
-                WHERE parent = {$infoMoveNode['parent']} AND lft > {$infoMoveNode['lft']} 
+        $sql1 = "SELECT *FROM $this->_table
+                WHERE parent = {$infoMoveNode['parent']} AND lft > {$infoMoveNode['lft']}
                 ORDER BY lft ASC LIMIT 1";
 
         $result1 = mysql_query($sql1, $this->_connect);
 
         $infoBrotherNode = mysql_fetch_assoc($result1);
 
-        if(!empty($infoBrotherNode)){
+        if (!empty($infoBrotherNode)) {
             $options = array('position' => 'after', 'brother_id' => $infoBrotherNode['id']);
             $this->moveNode($id, $infoMoveNode['parent'], $options);
         }

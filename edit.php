@@ -10,12 +10,15 @@ $arrConnect = array(
 );
 $tree = new Nest_Set($arrConnect);
 $data = array(
-    'name' => 'Group B2',
-    'url' => 'http://www.group-b2.vn',
+    'name' => 'Group O.1.2',
+    'url' => 'http://www.group-o12.vn',
 );
-$parent = 15;
+$id = 11;
+$newParentID = 4;
+$tree->updateNode($data, $id, $newParentID);
+// $parent = 1;
 // $option['position'] = 'after';
 // $option['brother_id'] = 9;
-$tree->insertNode($data, $parent);
+// $tree->insertNode($data, $parent, $option);
 
 ?>
